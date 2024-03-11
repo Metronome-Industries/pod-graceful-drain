@@ -1,0 +1,42 @@
+version: 2.1
+orbs:
+  aws-cli: circleci/aws-cli@1.3.0
+  aws-eks: circleci/aws-eks@2.2.0
+
+jobs:
+  publish:
+    machine:
+      image: ubuntu-2004:2022.10.1
+    resource_class: arm.medium
+    steps:
+      - checkout
+      - aws-cli/setup
+      - run:
+          name: Setup AWS profile
+          command: |
+            echo -e "[profile pusher]\nrole_arn = arn:aws:iam::703712742941:role/ECRPusher\nsource_profile=default\n" \
+              >> ~/.aws/config
+      - run:
+          name: Login to ECR
+          command: |
+            unset AWS_ACCESS_KEY_ID && \
+            unset AWS_SECRET_ACCESS_KEY && \
+            AWS_PROFILE=pusher aws ecr get-login-password --region us-west-2 | \
+              docker login --username AWS --password-stdin 703712742941.dkr.ecr.us-west-2.amazonaws.com
+      - run:
+          name: Build and push
+          command: |
+            img=703712742941.dkr.ecr.us-west-2.amazonaws.com/pod-graceful-drain:${CIRCLE_TAG}
+            docker build -t ${img} .
+            docker push ${img}
+workflows:
+  publish-image:
+    jobs:
+      - publish:
+          context:
+            - Deployer
+          filters:
+            branches:
+              ignore: "/.*/"
+            tags:
+              only: "/.*/"
